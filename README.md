@@ -11,7 +11,7 @@ brew install --cask ferrite-engineering/tap/netcrux
 brew install --cask ferrite-engineering/tap/lintcrux
 brew install --cask ferrite-engineering/tap/simcrux
 
-brew install ferrite-engineering/tap/lintcrux-cli
+brew install ferrite-engineering/tap/lintcrux-cli     # from 1.0
 ```
 
 Use the full name. Homebrew 7 loads nothing from a third-party tap until you
@@ -24,7 +24,7 @@ with `brew upgrade`.
 | `netcrux` | Hierarchical RTL schematic browser and signal tracer | macOS 12+ |
 | `lintcrux` | One dashboard for Verilator, Verible, Slang, GHDL, Yosys and svlint | macOS 12+ |
 | `simcrux` | Regression dashboard for Icarus, Verilator, GHDL and cocotb | macOS 12+ |
-| `lintcrux-cli` | The LintCrux engines with no window, for CI pipelines | Linux x86_64 (glibc 2.34+); macOS Apple Silicon from 1.0 |
+| `lintcrux-cli` | The LintCrux engines with no window, for CI pipelines | macOS Apple Silicon, Linux x86_64 (glibc 2.34+); from 1.0 |
 
 The casks install the same signed and notarized DMG that each product's
 download page serves. The apps check for updates themselves and tell you when
@@ -51,10 +51,11 @@ checksum and the release's own `SHA256SUMS` agree.
 [`follow-manifests.yml`](.github/workflows/follow-manifests.yml) runs it every
 six hours, and on demand. When something changed, CI runs `brew style` and a
 strict online `brew audit`. It installs every cask, validates each DMG's stapled
-notarization ticket and checks the app's signing team. It also installs the CLI
-on macOS and Linux and runs it. The new files are committed only if every one
-of those steps passes. So a release reaches this tap after its manifest goes
-live, never before, and never broken.
+notarization ticket and checks the app's signing team. It installs the CLI on
+macOS and Linux and checks that it reports the version it was published as. The
+casks and the CLI are committed separately, each only if its own checks pass, so
+a broken CLI build cannot hold back the apps. A release reaches this tap after
+its manifest goes live, never before, and never broken.
 
 To change a cask or the formula, edit its template in `tool/bump.py` and push.
 CI renders, verifies and commits the result. To try an edit locally first:

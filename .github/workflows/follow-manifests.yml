@@ -2,13 +2,15 @@
 # manifest advertises. A release goes live when its manifest does, so the tap
 # follows the manifests and never leads them.
 #
-#   render   read the live manifests and SHA256SUMS; render Casks/ and Formula/
-#   verify   style, strict online audit, real installs, signatures, and the CLI
-#            run, on macOS and Linux, against exactly what render produced
-#   publish  commit the rendered files, only if every check passed
+#   render        read the live manifests and SHA256SUMS; render Casks/ and Formula/
+#   verify-casks  style, strict online audit, real installs, stapled tickets, signing team
+#   verify-cli    audit, install and run the CLI, on macOS and on Linux
+#   publish       commit each half whose checks passed
 #
-# A scheduled run with nothing new stops after render. Release day does not
-# have to wait for the schedule: `gh workflow run follow-manifests.yml`.
+# The casks and the CLI publish independently, so a broken CLI build cannot hold
+# the four apps back on release day. A scheduled run with nothing new stops
+# after render. Release day need not wait for the schedule:
+# `gh workflow run follow-manifests.yml`.
 name: Follow the update manifests
 
 on:
@@ -40,30 +42,34 @@ env:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      changed: ${{ steps.render.outputs.changed }}
-      summary: ${{ steps.render.outputs.summary }}
-      cli_platforms: ${{ steps.render.outputs.cli_platforms }}
+      casks_changed: ${{ steps.render.outputs.casks_changed }}
+      cli_changed: ${{ steps.render.outputs.cli_changed }}
+      cli: ${{ steps.render.outputs.cli }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - id: render
         run: python3 tool/bump.py --github-output "$GITHUB_OUTPUT"
+      # One tarball, so the later jobs get exactly this tree, deletions and an
+      # empty Formula/ included, with no guessing about an artifact's root.
+      - name: Pack the render
+        run: |
+          mkdir -p Formula
+          tar -cf rendered.tar Casks Formula
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: rendered
-          path: |
-            Casks/
-            Formula/
+          path: rendered.tar
           if-no-files-found: error
           retention-days: 7
 
-  verify-macos:
+  verify-casks:
     needs: render
     # Every trigger but a quiet schedule verifies, so a hand edit to a template
     # is checked before it publishes.
-    if: needs.render.outputs.changed == 'true' || github.event_name != 'schedule'
+    if: needs.render.outputs.casks_changed == 'true' || github.event_name != 'schedule'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -71,8 +77,15 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rendered
+      - name: Replace Casks/ and Formula/ with what render produced
+        run: |
+          rm -rf Casks Formula
+          tar -xf rendered.tar
+          rm rendered.tar
       - name: Tap this checkout
-        run: tool/tap-checkout.sh
+        run: |
+          tool/tap-checkout.sh
+          brew trust "$TAP"
       - name: Style
         run: brew style "$TAP"
       - name: Audit
@@ -80,7 +93,6 @@ jobs:
           casks=()
           for f in Casks/*.rb; do casks+=("$TAP/$(basename "$f" .rb)"); done
           brew audit --strict --online --cask "${casks[@]}"
-          brew audit --strict --online --formula "$TAP/lintcrux-cli"
       - name: Install the casks and check what they installed
         run: |
           appdir="$RUNNER_TEMP/Applications"
@@ -101,43 +113,55 @@ jobs:
             fi
             echo "ok: $app"
           done
-      - name: Install and run the CLI
-        # Absent until the first release whose macOS CLI starts; see tool/bump.py.
-        if: contains(needs.render.outputs.cli_platforms, 'macos')
-        run: |
-          brew install --formula "$TAP/lintcrux-cli"
-          brew test "$TAP/lintcrux-cli"
 
-  verify-linux:
+  verify-cli:
     needs: render
+    # No formula before the first release whose CLI passes its own test; see
+    # CLI_FIRST_VERSION in tool/bump.py.
     if: >-
-      (needs.render.outputs.changed == 'true' || github.event_name != 'schedule')
-      && contains(needs.render.outputs.cli_platforms, 'linux')
-    runs-on: ubuntu-latest
+      needs.render.outputs.cli == 'true'
+      && (needs.render.outputs.cli_changed == 'true' || github.event_name != 'schedule')
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pinned rather than -latest: the Linux leg relies on the image shipping
+        # Homebrew, which a label migration could silently drop.
+        os: [macos-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rendered
+      - name: Replace Casks/ and Formula/ with what render produced
+        run: |
+          rm -rf Casks Formula
+          tar -xf rendered.tar
+          rm rendered.tar
       - name: Put Homebrew on PATH
+        if: runner.os == 'Linux'
         # Preinstalled on the Ubuntu image, but not on PATH.
         run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
       - name: Tap this checkout
-        run: tool/tap-checkout.sh
+        run: |
+          tool/tap-checkout.sh
+          brew trust "$TAP"
+      - name: Audit
+        if: runner.os == 'macOS'
+        run: brew audit --strict --online --formula "$TAP/lintcrux-cli"
       - name: Install and run the CLI
         run: |
           brew install --formula "$TAP/lintcrux-cli"
           brew test "$TAP/lintcrux-cli"
 
   publish:
-    needs: [render, verify-macos, verify-linux]
+    needs: [render, verify-casks, verify-cli]
     if: >-
       always()
-      && needs.render.outputs.changed == 'true'
-      && needs.verify-macos.result == 'success'
-      && (needs.verify-linux.result == 'success' || needs.verify-linux.result == 'skipped')
-    runs-on: ubuntu-latest
+      && needs.render.result == 'success'
+      && (needs.render.outputs.casks_changed == 'true' || needs.render.outputs.cli_changed == 'true')
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -146,17 +170,38 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rendered
-      - name: Commit and push
+      - name: Replace Casks/ and Formula/ with what render produced
+        run: |
+          rm -rf Casks Formula
+          tar -xf rendered.tar
+          rm rendered.tar
+      - name: Commit each verified half, and push
         env:
-          SUMMARY: ${{ needs.render.outputs.summary }}
+          CASKS_OK: ${{ needs.render.outputs.casks_changed == 'true' && needs.verify-casks.result == 'success' }}
+          # Removing the formula needs no verification; publishing one does.
+          CLI_OK: >-
+            ${{ needs.render.outputs.cli_changed == 'true'
+              && (needs.verify-cli.result == 'success'
+                  || (needs.render.outputs.cli == 'false' && needs.verify-cli.result == 'skipped')) }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks Formula
+          if [[ "$CASKS_OK" == "true" ]]; then git add -A Casks; fi
+          if [[ "$CLI_OK" == "true" ]]; then git add -A Formula; fi
           if git diff --cached --quiet; then
-            echo "Nothing to publish."
+            echo "Nothing verified to publish."
             exit 0
           fi
-          git commit -m "Follow the manifests: $SUMMARY"
-          git pull --rebase
+          parts=()
+          while read -r status path; do
+            name="$(basename "$path" .rb)"
+            if [[ "$status" == D ]]; then
+              parts+=("$name removed")
+            else
+              parts+=("$name $(sed -n 's/^  version "\(.*\)"$/\1/p' "$path" | head -1)")
+            fi
+          done < <(git diff --cached --name-status)
+          summary="$(printf '%s, ' "${parts[@]}")"
+          git commit -m "Follow the manifests: ${summary%, }"
+          git pull --rebase --autostash
           git push
