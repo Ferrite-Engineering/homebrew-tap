@@ -1,0 +1,162 @@
+# Keeps every cask and formula in this tap on the version its product's update
+# manifest advertises. A release goes live when its manifest does, so the tap
+# follows the manifests and never leads them.
+#
+#   render   read the live manifests and SHA256SUMS; render Casks/ and Formula/
+#   verify   style, strict online audit, real installs, signatures, and the CLI
+#            run, on macOS and Linux, against exactly what render produced
+#   publish  commit the rendered files, only if every check passed
+#
+# A scheduled run with nothing new stops after render. Release day does not
+# have to wait for the schedule: `gh workflow run follow-manifests.yml`.
+name: Follow the update manifests
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "Casks/**"
+      - "Formula/**"
+      - "tool/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: follow-manifests
+  cancel-in-progress: false
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_ANALYTICS: "1"
+  HOMEBREW_NO_ENV_HINTS: "1"
+  TAP: ferrite-engineering/tap
+  # Ferrite Engineering LLC's Developer ID team. Every app must be signed by it.
+  TEAM_ID: 7957R7M965
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.render.outputs.changed }}
+      summary: ${{ steps.render.outputs.summary }}
+      cli_platforms: ${{ steps.render.outputs.cli_platforms }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - id: render
+        run: python3 tool/bump.py --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rendered
+          path: |
+            Casks/
+            Formula/
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-macos:
+    needs: render
+    # Every trigger but a quiet schedule verifies, so a hand edit to a template
+    # is checked before it publishes.
+    if: needs.render.outputs.changed == 'true' || github.event_name != 'schedule'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rendered
+      - name: Tap this checkout
+        run: tool/tap-checkout.sh
+      - name: Style
+        run: brew style "$TAP"
+      - name: Audit
+        run: |
+          casks=()
+          for f in Casks/*.rb; do casks+=("$TAP/$(basename "$f" .rb)"); done
+          brew audit --strict --online --cask "${casks[@]}"
+          brew audit --strict --online --formula "$TAP/lintcrux-cli"
+      - name: Install the casks and check what they installed
+        run: |
+          appdir="$RUNNER_TEMP/Applications"
+          mkdir -p "$appdir"
+          for f in Casks/*.rb; do
+            cask="$TAP/$(basename "$f" .rb)"
+            brew install --cask --appdir="$appdir" "$cask"
+            # The DMG carries a stapled notarization ticket, so this holds
+            # offline and whatever the runner's Gatekeeper settings are.
+            xcrun stapler validate "$(brew --cache --cask "$cask")"
+          done
+          for app in "$appdir"/*.app; do
+            codesign --verify --deep --strict "$app"
+            team="$(codesign -dv "$app" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+            if [[ "$team" != "$TEAM_ID" ]]; then
+              echo "::error::$app is signed by team '$team', expected $TEAM_ID"
+              exit 1
+            fi
+            echo "ok: $app"
+          done
+      - name: Install and run the CLI
+        # Absent until the first release whose macOS CLI starts; see tool/bump.py.
+        if: contains(needs.render.outputs.cli_platforms, 'macos')
+        run: |
+          brew install --formula "$TAP/lintcrux-cli"
+          brew test "$TAP/lintcrux-cli"
+
+  verify-linux:
+    needs: render
+    if: >-
+      (needs.render.outputs.changed == 'true' || github.event_name != 'schedule')
+      && contains(needs.render.outputs.cli_platforms, 'linux')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rendered
+      - name: Put Homebrew on PATH
+        # Preinstalled on the Ubuntu image, but not on PATH.
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: Tap this checkout
+        run: tool/tap-checkout.sh
+      - name: Install and run the CLI
+        run: |
+          brew install --formula "$TAP/lintcrux-cli"
+          brew test "$TAP/lintcrux-cli"
+
+  publish:
+    needs: [render, verify-macos, verify-linux]
+    if: >-
+      always()
+      && needs.render.outputs.changed == 'true'
+      && needs.verify-macos.result == 'success'
+      && (needs.verify-linux.result == 'success' || needs.verify-linux.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rendered
+      - name: Commit and push
+        env:
+          SUMMARY: ${{ needs.render.outputs.summary }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks Formula
+          if git diff --cached --quiet; then
+            echo "Nothing to publish."
+            exit 0
+          fi
+          git commit -m "Follow the manifests: $SUMMARY"
+          git pull --rebase
+          git push
