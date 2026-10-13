@@ -18,6 +18,7 @@ cask "lintcrux" do
   depends_on macos: :monterey
 
   app "LintCrux.app"
+  binary "#{appdir}/LintCrux.app/Contents/MacOS/LintCrux", target: "lintcrux-app"
 
   zap trash: [
     "~/Library/Application Support/com.ferriteengineering.lintcruxPro",

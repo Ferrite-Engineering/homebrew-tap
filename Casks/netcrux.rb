@@ -18,6 +18,7 @@ cask "netcrux" do
   depends_on macos: :monterey
 
   app "NetCrux.app"
+  binary "#{appdir}/NetCrux.app/Contents/MacOS/NetCrux", target: "netcrux"
 
   zap trash: [
     "~/Library/Application Support/com.ferriteengineering.netcruxPro",

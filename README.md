@@ -26,6 +26,26 @@ with `brew upgrade`.
 | `simcrux` | Regression dashboard for Icarus, Verilator, GHDL and cocotb | macOS 12+ |
 | `lintcrux-cli` | The LintCrux engines with no window, for CI pipelines | macOS Apple Silicon, Linux x86_64 (glibc 2.34+); from 1.0 |
 
+## Commands on PATH
+
+Each cask links the app's own executable into Homebrew's `bin`, and every app
+takes arguments, so `wavecrux trace.fst` or `wavecrux --wcp-port 0` starts the
+viewer from a terminal or a test runner.
+
+| Command | Installed by | Runs |
+|---|---|---|
+| `wavecrux` | `wavecrux` cask | WaveCrux |
+| `netcrux` | `netcrux` cask | NetCrux |
+| `lintcrux-app` | `lintcrux` cask | LintCrux |
+| `simcrux-app` | `simcrux` cask | SimCrux |
+| `simcrux-pro` | `simcrux` cask | `simcrux-pro push-results`, the team-database CI writer (Apple Silicon) |
+| `lintcrux` | `lintcrux-cli` formula | The headless LintCrux CLI |
+| `simcrux` | `simcrux-cli` formula (from 1.1) | The headless SimCrux CLI |
+
+LintCrux and SimCrux name their app commands `-app` because the plain name
+belongs to the headless CLI formula, and both can be installed side by side.
+`tool/bump.py` refuses to render if two entries would claim one command.
+
 The casks install the same signed and notarized DMG that each product's
 download page serves. The apps check for updates themselves and tell you when
 one is out; with a Homebrew install, `brew upgrade` is how you take it.

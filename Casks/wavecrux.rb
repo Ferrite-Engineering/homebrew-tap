@@ -18,6 +18,7 @@ cask "wavecrux" do
   depends_on macos: :monterey
 
   app "WaveCrux.app"
+  binary "#{appdir}/WaveCrux.app/Contents/MacOS/WaveCrux", target: "wavecrux"
 
   zap trash: [
     "~/Library/Application Support/com.ferriteengineering.wavecruxPro",

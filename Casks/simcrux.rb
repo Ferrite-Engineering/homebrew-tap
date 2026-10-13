@@ -18,6 +18,8 @@ cask "simcrux" do
   depends_on macos: :monterey
 
   app "SimCrux.app"
+  binary "#{appdir}/SimCrux.app/Contents/MacOS/SimCrux", target: "simcrux-app"
+  binary "#{appdir}/SimCrux.app/Contents/MacOS/simcrux-pro"
 
   zap trash: [
     "~/Library/Application Support/com.ferriteengineering.simcruxPro",

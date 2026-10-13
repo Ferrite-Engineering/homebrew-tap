@@ -53,6 +53,15 @@ CLI_DESC = {
     "simcrux": "Headless HDL regression runner for CI pipelines",
 }
 
+# Helper executables a product's build stages into Contents/MacOS beside the
+# app, linked onto PATH under their own names. SimCrux: `simcrux-pro`, the
+# `push-results` CI writer, staged by simcrux-pro/scripts/_stage_cli.sh since
+# before 1.0.0 (the Linux packages link the same name into /usr/bin). It is
+# built for the release host's architecture only, so it runs on Apple silicon.
+BUNDLED_HELPERS = {
+    "simcrux": ("simcrux-pro",),
+}
+
 # The newest release whose app bundle carries the tier in its name
 # ("WaveCrux Pro.app"). Every later release is named for the product alone,
 # because one binary serves every tier and the name cannot follow a licence.
@@ -104,7 +113,7 @@ cask "{token}" do
   depends_on macos: :monterey
 
   app "{app}"
-
+{binaries}
   zap trash: [
     "~/Library/Application Support/{bundle_id}",
     "~/Library/Caches/{bundle_id}",
@@ -217,11 +226,13 @@ def render(product: Product) -> tuple[str, dict[str, str]]:
             f"{product.token}: the manifest says {dmg} is {manifest_sha or '(missing)'}, SHA256SUMS says {sums[dmg]}"
         )
 
+    app = f"{product.name} Pro.app" if suffixed else f"{product.name}.app"
     fields = dict(
         host=product.host,
         token=product.token,
         name=product.name,
-        app=f"{product.name} Pro.app" if suffixed else f"{product.name}.app",
+        app=app,
+        binaries=render_binaries(product, app),
         desc=product.desc,
         version=version,
         sha256=sums[dmg],
@@ -232,6 +243,49 @@ def render(product: Product) -> tuple[str, dict[str, str]]:
     if first is not None and parse_version(version, f"{product.token}-cli") >= first:
         files[f"Formula/{product.token}-cli.rb"] = render_cli_formula(product, version, sums)
     return version, files
+
+
+def app_command(product: Product) -> str:
+    """The PATH name of the app's own executable.
+
+    The product's lowercase name, unless the product has a headless CLI
+    formula: that formula installs `bin/<token>`, and a cask `binary` on the
+    same name would make whichever is installed second fail. The app then
+    takes `<token>-app`. Keyed on the product having a CLI at all, not on the
+    current version, so the name does not change under a user at the release
+    that first publishes the formula.
+    """
+    return f"{product.token}-app" if product.token in CLI_FIRST_VERSION else product.token
+
+
+def render_binaries(product: Product, app: str) -> str:
+    # Contents/MacOS/<PRODUCT_NAME> is the app's executable: PRODUCT_NAME in
+    # each *-pro/macos/Runner/Configs/AppInfo.xcconfig, the same string as the
+    # bundle's file name. Every app parses its own arguments, so the link is a
+    # usable command (`wavecrux trace.fst`, `wavecrux --wcp-port 0`).
+    executable = app.removesuffix(".app")
+    lines = [f'  binary "#{{appdir}}/{app}/Contents/MacOS/{executable}", target: "{app_command(product)}"']
+    for helper in BUNDLED_HELPERS.get(product.token, ()):
+        lines.append(f'  binary "#{{appdir}}/{app}/Contents/MacOS/{helper}"')
+    return "\n".join(lines) + "\n"
+
+
+def command_names() -> dict[str, str]:
+    """Every PATH name this tap can install, mapped to who installs it."""
+    owners: dict[str, str] = {}
+
+    def claim(name: str, owner: str) -> None:
+        if name in owners:
+            raise ReleaseError(f"{owner} and {owners[name]} both install `{name}`")
+        owners[name] = owner
+
+    for product in PRODUCTS:
+        claim(app_command(product), f"cask {product.token}")
+        for helper in BUNDLED_HELPERS.get(product.token, ()):
+            claim(helper, f"cask {product.token}")
+        if product.token in CLI_FIRST_VERSION:
+            claim(product.token, f"formula {product.token}-cli")
+    return owners
 
 
 def render_cli_formula(product: Product, version: str, sums: dict[str, str]) -> str:
@@ -260,6 +314,7 @@ def main() -> int:
     rendered: dict[str, str] = {}
     versions: dict[str, str] = {}
     try:
+        command_names()
         for product in PRODUCTS:
             versions[product.token], files = render(product)
             rendered.update(files)
