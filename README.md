@@ -1,7 +1,7 @@
 # Ferrite Engineering Homebrew tap
 
 Homebrew casks for the EDACrux suite (WaveCrux, NetCrux, LintCrux and SimCrux),
-plus a formula for the LintCrux headless CLI.
+plus formulas for the LintCrux and SimCrux headless CLIs.
 
 ## Install
 
@@ -12,6 +12,7 @@ brew install --cask ferrite-engineering/tap/lintcrux
 brew install --cask ferrite-engineering/tap/simcrux
 
 brew install ferrite-engineering/tap/lintcrux-cli     # from 1.0
+brew install ferrite-engineering/tap/simcrux-cli      # from 1.1
 ```
 
 Use the full name. Homebrew 7 loads nothing from a third-party tap until you
@@ -24,7 +25,8 @@ with `brew upgrade`.
 | `netcrux` | Hierarchical RTL schematic browser and signal tracer | macOS 12+ |
 | `lintcrux` | One dashboard for Verilator, Verible, Slang, GHDL, Yosys and svlint | macOS 12+ |
 | `simcrux` | Regression dashboard for Icarus, Verilator, GHDL and cocotb | macOS 12+ |
-| `lintcrux-cli` | The LintCrux engines with no window, for CI pipelines | macOS Apple Silicon, Linux x86_64 (glibc 2.34+); from 1.0 |
+| `lintcrux-cli` | The LintCrux engines with no window, for CI pipelines | macOS Apple Silicon, Linux x86_64 (glibc 2.28+); from 1.0 |
+| `simcrux-cli` | The SimCrux regression runner with no window, for CI pipelines | macOS Apple Silicon, Linux x86_64 (glibc 2.28+); from 1.1 |
 
 ## Commands on PATH
 
