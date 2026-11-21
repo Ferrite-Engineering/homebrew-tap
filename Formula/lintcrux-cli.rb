@@ -2,20 +2,20 @@
 class LintcruxCli < Formula
   desc "Headless RTL lint runner for CI pipelines"
   homepage "https://lintcrux.app/"
-  version "1.1.0"
+  version "1.2.0"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://updates.lintcrux.app/1.1.0/lintcrux-cli-1.1.0-macos-arm64.zip"
-      sha256 "7c5a73935cfa9301c188e85296a47913a66b00340fd2aaa64a7a019bf045a120"
+      url "https://updates.lintcrux.app/1.2.0/lintcrux-cli-1.2.0-macos-arm64.zip"
+      sha256 "65953f818137c9e17ad7e6477de0ca53a31aed4970f3c1fe052c5b43f6cd703c"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://updates.lintcrux.app/1.1.0/lintcrux-cli-1.1.0-linux-x64.tar.gz"
-      sha256 "eeca5c51093539725261e3913c02fbdb9b5c89d53ceff07d64e0abca3697c5b1"
+      url "https://updates.lintcrux.app/1.2.0/lintcrux-cli-1.2.0-linux-x64.tar.gz"
+      sha256 "328bc276171b99240c158ebd138b616cf69e46dfc0fbd4f96b2d75fc64ed3769"
     end
   end
 

@@ -2,20 +2,20 @@
 class SimcruxCli < Formula
   desc "Headless HDL regression runner for CI pipelines"
   homepage "https://simcrux.app/"
-  version "1.1.0"
+  version "1.2.0"
   license "Apache-2.0"
 
   on_macos do
     on_arm do
-      url "https://updates.simcrux.app/1.1.0/simcrux-cli-1.1.0-macos-arm64.zip"
-      sha256 "997de35038c11fa1026516371d3643ebce48ab75f466a99e75eb3c570877b3ae"
+      url "https://updates.simcrux.app/1.2.0/simcrux-cli-1.2.0-macos-arm64.zip"
+      sha256 "b7287c335820ff47b71bcd896faa3d8fe0a5b375f091a5a48a5615268ced1e42"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://updates.simcrux.app/1.1.0/simcrux-cli-1.1.0-linux-x64.tar.gz"
-      sha256 "1c0b7a61d86da45b2a29535fd30c666a582f844aef5a83277ba1e4184d3fbeaf"
+      url "https://updates.simcrux.app/1.2.0/simcrux-cli-1.2.0-linux-x64.tar.gz"
+      sha256 "87ab808a5824439ce2a5d18d8703fd719397622098beec98ccddbf31fdf3db2b"
     end
   end
 
