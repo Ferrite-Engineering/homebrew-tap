@@ -20,7 +20,13 @@ class SimcruxCli < Formula
   end
 
   def install
-    bin.install "simcrux"
+    if File.directory?("bin")
+      libexec.install "bin"
+      libexec.install "lib" if File.directory?("lib")
+      bin.install_symlink libexec/"bin/simcrux"
+    else
+      bin.install "simcrux"
+    end
   end
 
   test do

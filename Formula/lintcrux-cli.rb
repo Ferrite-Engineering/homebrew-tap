@@ -20,7 +20,13 @@ class LintcruxCli < Formula
   end
 
   def install
-    bin.install "lintcrux"
+    if File.directory?("bin")
+      libexec.install "bin"
+      libexec.install "lib" if File.directory?("lib")
+      bin.install_symlink libexec/"bin/lintcrux"
+    else
+      bin.install "lintcrux"
+    end
   end
 
   test do
