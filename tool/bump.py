@@ -150,7 +150,13 @@ class {class_name} < Formula
   end
 
   def install
-    bin.install "{token}"
+    if File.directory?("bin")
+      libexec.install "bin"
+      libexec.install "lib" if File.directory?("lib")
+      bin.install_symlink libexec/"bin/{token}"
+    else
+      bin.install "{token}"
+    end
   end
 
   test do
